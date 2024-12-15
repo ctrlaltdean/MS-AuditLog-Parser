@@ -13,6 +13,9 @@ def process_audit_logs():
 
     # Read the input CSV and process each row
     output_file_path = os.path.splitext(input_file_path)[0] + "_processed.csv"
+    ip_list_file_path = os.path.splitext(input_file_path)[0] + "_unique_ips.txt"
+
+    unique_ips = set()
 
     with open(input_file_path, mode='r', encoding='utf-8') as infile:
         reader = csv.DictReader(infile)
@@ -29,14 +32,15 @@ def process_audit_logs():
                 print(f"Error decoding JSON for row {reader.line_num}: {e}")
                 continue
 
-            # Flatten JSON data if necessary (you can add more flattening logic here if needed)
-
             # Consolidate IP addresses
             ip_addresses = set()
             if 'ClientIP' in data and data['ClientIP']:
                 ip_addresses.add(data['ClientIP'])
             if 'ClientIPAddress' in data and data['ClientIPAddress']:
                 ip_addresses.add(data['ClientIPAddress'])
+
+            # Add IP addresses to the unique IPs set
+            unique_ips.update(ip_addresses)
 
             # Create a new IPAddresses field
             data['IPAddresses'] = ', '.join(ip_addresses)
@@ -67,6 +71,14 @@ def process_audit_logs():
             writer = csv.DictWriter(outfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(processed_rows)
+
+    # Prompt the user to export the unique IP addresses
+    export_ips = input("Do you want to export the unique IP addresses to a separate file? (yes/no): ").strip().lower()
+    if export_ips in ['yes', 'y']:
+        with open(ip_list_file_path, mode='w', encoding='utf-8') as ip_file:
+            for ip in sorted(unique_ips):
+                ip_file.write(f"{ip}\n")
+        print(f"Unique IP addresses exported to '{ip_list_file_path}'")
 
     print(f"Processing complete! Output saved to '{output_file_path}'")
 
