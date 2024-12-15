@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+from collections import Counter
 
 def process_audit_logs():
     # Prompt user for the input file path
@@ -15,7 +16,7 @@ def process_audit_logs():
     output_file_path = os.path.splitext(input_file_path)[0] + "_processed.csv"
     ip_list_file_path = os.path.splitext(input_file_path)[0] + "_unique_ips.txt"
 
-    unique_ips = set()
+    ip_counter = Counter()
 
     with open(input_file_path, mode='r', encoding='utf-8') as infile:
         reader = csv.DictReader(infile)
@@ -39,8 +40,8 @@ def process_audit_logs():
             if 'ClientIPAddress' in data and data['ClientIPAddress']:
                 ip_addresses.add(data['ClientIPAddress'])
 
-            # Add IP addresses to the unique IPs set
-            unique_ips.update(ip_addresses)
+            # Update the IP address counter
+            ip_counter.update(ip_addresses)
 
             # Create a new IPAddresses field
             data['IPAddresses'] = ', '.join(ip_addresses)
@@ -75,9 +76,12 @@ def process_audit_logs():
     # Prompt the user to export the unique IP addresses
     export_ips = input("Do you want to export the unique IP addresses to a separate file? (yes/no): ").strip().lower()
     if export_ips in ['yes', 'y']:
+        # Sort IP addresses by their frequency (ascending order)
+        sorted_ips = sorted(ip_counter.items(), key=lambda x: x[1])
+        
         with open(ip_list_file_path, mode='w', encoding='utf-8') as ip_file:
-            for ip in sorted(unique_ips):
-                ip_file.write(f"{ip}\n")
+            for ip, count in sorted_ips:
+                ip_file.write(f"{ip} - {count} occurrences\n")
         print(f"Unique IP addresses exported to '{ip_list_file_path}'")
 
     print(f"Processing complete! Output saved to '{output_file_path}'")
