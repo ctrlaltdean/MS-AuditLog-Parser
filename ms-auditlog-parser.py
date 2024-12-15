@@ -1,79 +1,74 @@
 import csv
 import json
 import os
-from collections import OrderedDict
 
-def process_audit_logs(input_file, output_file, json_column_index=5):
-    """
-    Processes a CSV file containing JSON data in a specified column and converts it to a flattened CSV.
+def process_audit_logs():
+    # Prompt user for the input file path
+    input_file_path = input("Enter the path of the input CSV file: ").strip()
 
-    Args:
-        input_file (str): Path to the input CSV file.
-        output_file (str): Path to the output CSV file.
-        json_column_index (int): The zero-based index of the column containing JSON data.
-    """
-    # List to hold flattened data
-    flattened_data = []
+    # Check if the file exists
+    if not os.path.exists(input_file_path):
+        print(f"Error: File '{input_file_path}' not found.")
+        return
 
-    # Open the input CSV file for reading
-    with open(input_file, mode='r', encoding='utf-8-sig') as infile:
-        reader = csv.reader(infile)
-        headers = next(reader)  # Skip the header row
+    # Read the input CSV and process each row
+    output_file_path = os.path.splitext(input_file_path)[0] + "_processed.csv"
 
-        for row_number, row in enumerate(reader, start=2):
+    with open(input_file_path, mode='r', encoding='utf-8') as infile:
+        reader = csv.DictReader(infile)
+        
+        processed_rows = []
+        all_fieldnames = set()  # To track all unique fieldnames from all rows
+
+        for row in reader:
+            # Load the JSON data from the 6th column
+            json_data = row[list(row.keys())[5]]
             try:
-                json_data = json.loads(row[json_column_index])
-                
-                # Flatten the JSON data for each row
-                flattened_row = flatten_json(json_data)
-                flattened_data.append(flattened_row)
-
+                data = json.loads(json_data.replace('""', '"'))
             except json.JSONDecodeError as e:
-                print(f"Error decoding JSON on row {row_number}: {e}")
+                print(f"Error decoding JSON for row {reader.line_num}: {e}")
                 continue
 
-    # Dynamically determine all unique keys across all rows
-    all_keys = set()
-    for row in flattened_data:
-        all_keys.update(row.keys())
-    all_keys = sorted(all_keys)  # Sort for consistent output
+            # Flatten JSON data if necessary (you can add more flattening logic here if needed)
 
-    # Write the flattened data to the output CSV
-    with open(output_file, mode='w', encoding='utf-8', newline='') as outfile:
-        writer = csv.DictWriter(outfile, fieldnames=all_keys, extrasaction='ignore')
-        writer.writeheader()
-        writer.writerows(flattened_data)
+            # Consolidate IP addresses
+            ip_addresses = set()
+            if 'ClientIP' in data and data['ClientIP']:
+                ip_addresses.add(data['ClientIP'])
+            if 'ClientIPAddress' in data and data['ClientIPAddress']:
+                ip_addresses.add(data['ClientIPAddress'])
 
-    print(f"Processing complete. Output written to: {output_file}")
+            # Create a new IPAddresses field
+            data['IPAddresses'] = ', '.join(ip_addresses)
 
-def flatten_json(data, parent_key='', sep='_'):
-    """
-    Flattens nested JSON data into a single-level dictionary.
+            # Reorder columns: CreationTime first, followed by IPAddresses, then the rest
+            ordered_data = {'CreationTime': data.get('CreationTime', '')}
+            ordered_data['IPAddresses'] = data.get('IPAddresses', '')
 
-    Args:
-        data (dict): The JSON data to flatten.
-        parent_key (str): The base key to use for recursion.
-        sep (str): Separator to use for nested keys.
+            # Add the specified fields after 'CreationTime' and 'IPAddresses'
+            ordered_data['Operation'] = data.get('Operation', '')
+            ordered_data['Folders'] = data.get('Folders', '')
+            ordered_data['AffectedItems'] = data.get('AffectedItems', '')
+            ordered_data['Item'] = data.get('Item', '')
 
-    Returns:
-        dict: A flattened dictionary.
-    """
-    items = []
-    if isinstance(data, dict):
-        for key, value in data.items():
-            new_key = f"{parent_key}{sep}{key}" if parent_key else key
-            if isinstance(value, (dict, list)):
-                items.extend(flatten_json(value, new_key, sep=sep).items())
-            else:
-                items.append((new_key, value))
-    elif isinstance(data, list):
-        for i, element in enumerate(data):
-            new_key = f"{parent_key}{sep}{i}" if parent_key else str(i)
-            items.extend(flatten_json(element, new_key, sep=sep).items())
-    return dict(items)
+            # Add remaining fields
+            for key, value in data.items():
+                if key not in ['CreationTime', 'IPAddresses', 'Operation', 'Folders', 'AffectedItems', 'Item']:
+                    ordered_data[key] = value
+                    all_fieldnames.add(key)  # Track every key encountered
 
-# Prompt the user for the input file path and output file path
-input_file = input("Enter the path to the input CSV file: ").strip()
-output_file = input("Enter the path to the output CSV file: ").strip()
+            processed_rows.append(ordered_data)
 
-process_audit_logs(input_file, output_file)
+        # Include the fieldnames from the processed rows, ensuring every key is in the final list
+        fieldnames = ['CreationTime', 'IPAddresses', 'Operation', 'Folders', 'AffectedItems', 'Item'] + list(all_fieldnames)
+
+        # Write the processed data to a new CSV file
+        with open(output_file_path, mode='w', newline='', encoding='utf-8') as outfile:
+            writer = csv.DictWriter(outfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(processed_rows)
+
+    print(f"Processing complete! Output saved to '{output_file_path}'")
+
+if __name__ == "__main__":
+    process_audit_logs()
